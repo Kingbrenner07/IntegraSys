@@ -1,5 +1,6 @@
 import { Router, type IRouter } from "express";
 import healthRouter from "./health";
+import publicConfigRouter from "./public-config";
 import dashboardRouter from "./dashboard";
 import modulesRouter from "./modules";
 import processingRouter from "./processing";
@@ -20,6 +21,7 @@ export function createApiRouter(options: {
   const router: IRouter = Router();
 
   router.use(healthRouter);
+  router.use(publicConfigRouter);
   router.use(createRequireAuth(authenticator));
   router.use(createAuthRouter());
   router.use(dashboardRouter);

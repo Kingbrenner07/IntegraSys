@@ -9,6 +9,7 @@ import {
 import type { Session, User } from "@supabase/supabase-js";
 import { setAuthTokenGetter } from "@workspace/api-client-react";
 import { supabase, getAuthRedirectUrl, isSupabaseConfigured } from "./supabase";
+import { apiUrl } from "./api-url";
 
 export type UserRole = "admin" | "operator";
 
@@ -39,8 +40,7 @@ function getErrorMessage(error: unknown, fallback: string) {
 }
 
 async function getProfile(session: Session): Promise<AuthProfile> {
-  const base = import.meta.env.BASE_URL.replace(/\/$/, "");
-  const response = await fetch(`${base}/api/auth/me`, {
+  const response = await fetch(apiUrl("/api/auth/me"), {
     headers: {
       authorization: `Bearer ${session.access_token}`,
       accept: "application/json",

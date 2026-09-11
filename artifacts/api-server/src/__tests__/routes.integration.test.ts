@@ -295,6 +295,27 @@ describe("API dashboard and processing routes", () => {
     });
   }
 
+  it("exposes the public authentication configuration without a session", async () => {
+    const previousUrl = process.env.VITE_SUPABASE_URL;
+    const previousAnonKey = process.env.VITE_SUPABASE_ANON_KEY;
+    process.env.VITE_SUPABASE_URL = "https://example.supabase.co/path";
+    process.env.VITE_SUPABASE_ANON_KEY = "public-anon-key";
+
+    try {
+      const response = await request("/public-config");
+      expect(response.status).toBe(200);
+      await expect(response.json()).resolves.toEqual({
+        supabaseUrl: "https://example.supabase.co",
+        supabaseAnonKey: "public-anon-key",
+      });
+    } finally {
+      if (previousUrl === undefined) delete process.env.VITE_SUPABASE_URL;
+      else process.env.VITE_SUPABASE_URL = previousUrl;
+      if (previousAnonKey === undefined) delete process.env.VITE_SUPABASE_ANON_KEY;
+      else process.env.VITE_SUPABASE_ANON_KEY = previousAnonKey;
+    }
+  });
+
   it("returns dashboard summary and recent activity", async () => {
     const summaryResponse = await request("/dashboard/summary");
     expect(summaryResponse.status).toBe(200);

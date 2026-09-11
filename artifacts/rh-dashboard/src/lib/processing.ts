@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "./supabase";
+import { apiUrl } from "./api-url";
 
 export type ProcessingModule = "payroll" | "attendance" | "hr-documents";
 
@@ -31,7 +32,7 @@ export function getProcessingErrorMessage(error: unknown): string {
 }
 
 function apiPath(path: string) {
-  return `${import.meta.env.BASE_URL.replace(/\/$/, "")}/api${path}`;
+  return apiUrl(`/api${path}`);
 }
 
 async function authHeaders() {

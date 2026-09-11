@@ -6,6 +6,19 @@ import { createApiRouter } from "./routes";
 import type { Authenticator } from "./middlewares/auth";
 import type { AdminAuthActions } from "./lib/supabase-admin";
 
+function getCorsOrigin() {
+  const configuredOrigins = (process.env.CORS_ORIGINS ?? "")
+    .split(",")
+    .map((origin) => origin.trim())
+    .filter(Boolean);
+
+  if (configuredOrigins.length === 0) {
+    return process.env.NODE_ENV === "production" ? false : true;
+  }
+
+  return configuredOrigins;
+}
+
 export function createApp(options: {
   authenticate?: Authenticator;
   adminActions?: AdminAuthActions;
@@ -31,7 +44,7 @@ export function createApp(options: {
       },
     }),
   );
-  app.use(cors());
+  app.use(cors({ origin: getCorsOrigin() }));
   app.use(express.json());
   app.use(express.urlencoded({ extended: true }));
 
