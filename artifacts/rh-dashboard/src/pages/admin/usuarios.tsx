@@ -76,17 +76,18 @@ export default function AdminUsers() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-7">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight">Gestão de Usuários</h1>
-        <p className="text-muted-foreground mt-1">
+        <div className="mb-2 text-[0.68rem] font-bold uppercase tracking-[0.16em] text-primary/80">Administração</div>
+        <h1 className="text-[1.7rem] font-bold tracking-[-0.04em] sm:text-3xl">Gestão de Usuários</h1>
+        <p className="mt-2 text-sm text-muted-foreground">
           Controle de acesso e permissões da plataforma operacional.
         </p>
       </div>
 
       <div className="grid gap-6 md:grid-cols-3">
         <div className="md:col-span-1">
-          <Card className="border-border/50 shadow-sm sticky top-20">
+            <Card className="sticky top-24 border-card-border/80">
             <CardHeader>
               <CardTitle>Novo Acesso</CardTitle>
               <CardDescription>Convidar membro da equipe</CardDescription>
@@ -132,11 +133,11 @@ export default function AdminUsers() {
         </div>
 
         <div className="md:col-span-2 space-y-4">
-          <Card className="border-border/50 shadow-sm">
+          <Card className="border-card-border/80">
             <CardHeader className="pb-4">
               <CardTitle>Usuários Ativos</CardTitle>
             </CardHeader>
-            <CardContent className="p-0">
+            <CardContent className="overflow-x-auto p-0">
               {isLoading ? (
                 <div className="p-6 space-y-4">
                   {Array.from({ length: 3 }).map((_, i) => (

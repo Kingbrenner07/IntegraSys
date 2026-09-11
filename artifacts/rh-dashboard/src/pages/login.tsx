@@ -88,28 +88,34 @@ export default function Login() {
   const isForgot = mode === "forgot";
 
   return (
-    <div className="flex min-h-[100dvh] w-full items-center justify-center bg-muted/30 p-4">
-      <div className="w-full max-w-[400px]">
-        <div className="mb-8 flex flex-col items-center justify-center text-center">
-          <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-md bg-primary text-primary-foreground shadow-lg">
-            <Files className="h-6 w-6" />
+    <div className="relative flex min-h-[100dvh] w-full items-center justify-center overflow-hidden bg-background p-4 sm:p-6">
+      <div className="pointer-events-none absolute -left-32 top-[-15rem] h-[34rem] w-[34rem] rounded-full bg-primary/10 blur-3xl" />
+      <div className="pointer-events-none absolute -bottom-48 -right-32 h-[32rem] w-[32rem] rounded-full bg-sky-500/5 blur-3xl" />
+      <div className="relative w-full max-w-[440px]">
+        <div className="mb-7 flex flex-col items-center justify-center text-center sm:mb-8">
+          <div className="mb-5 flex h-14 w-14 items-center justify-center rounded-2xl bg-primary text-primary-foreground shadow-[0_10px_30px_hsl(var(--primary)/0.26)]">
+            <Files className="h-7 w-7" />
           </div>
-          <h1 className="text-2xl font-bold tracking-tight">IntegraSys RH</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
+          <h1 className="text-[1.7rem] font-bold tracking-[-0.04em]">IntegraSys <span className="text-primary">RH</span></h1>
+          <p className="mt-2 text-sm text-muted-foreground">
             Console de Operações de Processamento
           </p>
         </div>
 
-        <Card className="border-border/50 shadow-md">
-          <CardHeader className="space-y-1">
-            <CardTitle className="text-xl">
+        <Card className="border-card-border/80 bg-card/95 shadow-[var(--shadow-md)] backdrop-blur">
+          <CardHeader className="space-y-2 p-6 pb-5 sm:p-7 sm:pb-5">
+            <div className="mb-1 flex items-center gap-2 text-[0.65rem] font-bold uppercase tracking-[0.16em] text-primary/80">
+              <span className="h-1.5 w-1.5 rounded-full bg-primary" />
+              Acesso protegido
+            </div>
+            <CardTitle className="text-xl tracking-[-0.025em]">
               {isReset
                 ? "Criar nova senha"
                 : isForgot
                   ? "Recuperar acesso"
                   : "Acesso ao Sistema"}
             </CardTitle>
-            <CardDescription>
+            <CardDescription className="leading-relaxed">
               {isReset
                 ? "Escolha uma senha nova para sua conta."
                 : isForgot
@@ -117,7 +123,7 @@ export default function Login() {
                   : "Entre com seu e-mail corporativo e sua senha."}
             </CardDescription>
           </CardHeader>
-          <CardContent>
+          <CardContent className="p-6 pt-0 sm:p-7 sm:pt-0">
             <form onSubmit={submit} className="space-y-4">
               {!isReset && (
                 <div className="space-y-2">
@@ -162,14 +168,14 @@ export default function Login() {
                 </div>
               )}
 
-              {(error || authError) && (
-                <p role="alert" className="text-sm text-destructive">
+               {(error || authError) && (
+                 <p role="alert" className="rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2.5 text-sm text-destructive-foreground">
                   {error ?? authError}
                 </p>
               )}
-              {message && <p className="text-sm text-emerald-700">{message}</p>}
+               {message && <p className="rounded-lg border border-emerald-400/25 bg-emerald-400/10 px-3 py-2.5 text-sm text-emerald-200">{message}</p>}
               {!isConfigured && (
-                <p className="rounded-md bg-amber-500/10 p-3 text-xs text-amber-800">
+                 <p className="rounded-lg border border-amber-300/20 bg-amber-300/10 p-3 text-xs leading-relaxed text-amber-200">
                   O acesso está indisponível até que as variáveis públicas do Supabase sejam configuradas.
                 </p>
               )}
@@ -182,7 +188,7 @@ export default function Login() {
               {!isReset && (
                 <button
                   type="button"
-                  className="w-full text-center text-xs text-primary hover:underline"
+                   className="w-full rounded-md py-1 text-center text-xs font-medium text-primary transition-colors hover:bg-primary/10 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   onClick={() => {
                     setError(null);
                     setMessage(null);

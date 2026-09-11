@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
 import { formatDate } from "@/lib/utils"
-import { Upload, FileClock, Download, Loader2 } from "lucide-react"
+import { Upload, FileClock, Loader2 } from "lucide-react"
 import { Skeleton } from "@/components/ui/skeleton"
 import { useToast } from "@/components/ui/use-toast"
 import { ProcessingActions } from "@/components/processing-actions"
@@ -61,17 +61,18 @@ export default function TimesheetModule() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-7">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight">Folha de Ponto</h1>
-        <p className="text-muted-foreground mt-1">
+        <div className="mb-2 text-[0.68rem] font-bold uppercase tracking-[0.16em] text-primary/80">Módulo de processamento</div>
+        <h1 className="text-[1.7rem] font-bold tracking-[-0.04em] sm:text-3xl">Folha de Ponto</h1>
+        <p className="mt-2 text-sm text-muted-foreground">
           Separação e renomeação de espelhos de ponto com extração de competência.
         </p>
       </div>
 
       <div className="grid gap-6 md:grid-cols-3">
         <div className="md:col-span-1 space-y-6">
-          <Card className="border-border/50 shadow-sm">
+          <Card className="border-card-border/80">
             <CardHeader>
               <CardTitle>Extração Mensal</CardTitle>
               <CardDescription>Defina a competência e faça upload</CardDescription>
@@ -153,11 +154,11 @@ export default function TimesheetModule() {
           </Card>
         </div>
 
-        <Card className="md:col-span-2 border-border/50 shadow-sm">
+        <Card className="md:col-span-2 border-card-border/80">
           <CardHeader>
             <CardTitle>Histórico Recente</CardTitle>
           </CardHeader>
-          <CardContent>
+          <CardContent className="overflow-x-auto">
             {isLoading ? (
               <div className="space-y-4">
                 {Array.from({ length: 4 }).map((_, i) => (
