@@ -114,12 +114,6 @@ export default function PayslipModule() {
             </CardContent>
           </Card>
 
-          <Card className="bg-primary/5 border-primary/20">
-            <CardContent className="p-4 text-sm text-primary/80">
-              <h4 className="font-semibold mb-1">Como funciona</h4>
-              <p>O sistema identifica o nome em cada página, divide o PDF principal e nomeia cada arquivo somente com o nome da pessoa, como <code>[NOME].pdf</code>. A matrícula é usada apenas quando o nome não puder ser lido.</p>
-            </CardContent>
-          </Card>
         </div>
 
         <Card className="md:col-span-2 border-border/50 shadow-sm">
