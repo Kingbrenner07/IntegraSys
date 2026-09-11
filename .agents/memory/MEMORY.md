@@ -1,0 +1,3 @@
+- [Deployment architecture](deployment-architecture.md) — Keep the public frontend on GitHub Pages, with Supabase for identity/data and a separate service for Python PDF/OCR processing.
+- [PDF processing runtime](pdf-processing-runtime.md) — The current server pipeline uses Poppler/Node with optional Tesseract fallback; outputs are process-lifecycle data until storage/worker follow-up.
+- [OCR concurrency](ocr-concurrency.md) — Serialize scanned-PDF OCR jobs and enforce process timeouts to prevent CPU saturation from leaving jobs apparently stuck.

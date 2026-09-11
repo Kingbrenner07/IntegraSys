@@ -1,0 +1,28 @@
+kind = "web"
+previewPath = "/"
+title = "Dashboard RH IntegraSys"
+description = "Painel web para centralizar as automações de documentos de RH, com login, módulos de processamento de PDFs, acompanhamento de tarefas e administração de acessos."
+version = "1.0.0"
+id = "artifacts/rh-dashboard"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 23634
+
+[services.development]
+run = "pnpm --filter @workspace/rh-dashboard run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/rh-dashboard", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/rh-dashboard/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "23634"
+BASE_PATH = "/"

@@ -1,0 +1,379 @@
+openapi: 3.1.0
+info:
+  # Do not change the title, if the title changes, the import paths will be broken
+  title: Api
+  version: 0.1.0
+  description: API specification
+servers:
+  - url: /api
+    description: Base API path
+tags:
+  - name: health
+    description: Health operations
+  - name: dashboard
+    description: Dashboard overview and activity
+  - name: modules
+    description: Available document automation modules
+  - name: processing
+    description: PDF processing jobs
+  - name: admin
+    description: User access administration
+
+security:
+  - bearerAuth: []
+paths:
+  /healthz:
+    get:
+      operationId: healthCheck
+      tags: [health]
+      summary: Health check
+      security: []
+      description: Returns server health status
+      responses:
+        "200":
+          description: Healthy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthStatus"
+  /auth/me:
+    get:
+      operationId: getCurrentUser
+      tags: [health]
+      summary: Get the authenticated dashboard user
+      responses:
+        "200":
+          description: Authenticated dashboard user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthProfile"
+  /dashboard/summary:
+    get:
+      operationId: getDashboardSummary
+      tags: [dashboard]
+      summary: Get dashboard summary
+      responses:
+        "200":
+          description: Current dashboard metrics
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DashboardSummary"
+  /dashboard/activity:
+    get:
+      operationId: getDashboardActivity
+      tags: [dashboard]
+      summary: Get recent processing activity
+      responses:
+        "200":
+          description: Recent activity items
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ActivityItem"
+  /modules:
+    get:
+      operationId: listModules
+      tags: [modules]
+      summary: List available automation modules
+      responses:
+        "200":
+          description: Available modules
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Module"
+  /processing/jobs:
+    get:
+      operationId: listProcessingJobs
+      tags: [processing]
+      summary: List processing jobs
+      responses:
+        "200":
+          description: Processing jobs
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ProcessingJob"
+    post:
+      operationId: createProcessingJob
+      tags: [processing]
+      summary: Create a processing job
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProcessingJobInput"
+      responses:
+        "201":
+          description: Processing job created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProcessingJob"
+  /processing/jobs/{jobId}:
+    get:
+      operationId: getProcessingJob
+      tags: [processing]
+      summary: Get one processing job
+      parameters:
+        - $ref: "#/components/parameters/JobId"
+      responses:
+        "200":
+          description: Processing job
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProcessingJob"
+        "404":
+          description: Job not found
+  /admin/users:
+    get:
+      operationId: listAdminUsers
+      tags: [admin]
+      summary: List dashboard users
+      responses:
+        "200":
+          description: Dashboard users
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AdminUser"
+    post:
+      operationId: inviteAdminUser
+      tags: [admin]
+      summary: Invite a dashboard user
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InviteUserInput"
+      responses:
+        "201":
+          description: User invitation created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminUser"
+  /admin/users/{userId}/status:
+    patch:
+      operationId: updateAdminUserStatus
+      tags: [admin]
+      summary: Update a dashboard user status
+      parameters:
+        - $ref: "#/components/parameters/UserId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UserStatusUpdate"
+      responses:
+        "200":
+          description: Updated dashboard user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminUser"
+  /admin/users/{userId}/role:
+    patch:
+      operationId: updateAdminUserRole
+      tags: [admin]
+      summary: Update a dashboard user role
+      parameters:
+        - $ref: "#/components/parameters/UserId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UserRoleUpdate"
+      responses:
+        "200":
+          description: Updated dashboard user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminUser"
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  parameters:
+    JobId:
+      name: jobId
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    UserId:
+      name: userId
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+  schemas:
+    HealthStatus:
+      type: object
+      properties:
+        status:
+          type: string
+      required:
+        - status
+    AuthProfile:
+      type: object
+      required: [id, email, role, status]
+      properties:
+        id:
+          type: string
+        email:
+          type: string
+          format: email
+        role:
+          type: string
+          enum: [admin, operator]
+        status:
+          type: string
+          enum: [active]
+    DashboardSummary:
+      type: object
+      required: [documentsProcessed, activeJobs, successRate, monthlyPages]
+      properties:
+        documentsProcessed:
+          type: integer
+        activeJobs:
+          type: integer
+        successRate:
+          type: number
+          format: float
+        monthlyPages:
+          type: integer
+    ActivityItem:
+      type: object
+      required: [id, title, detail, status, createdAt]
+      properties:
+        id:
+          type: integer
+        title:
+          type: string
+        detail:
+          type: string
+        status:
+          type: string
+          enum: [queued, completed, processing, failed]
+        createdAt:
+          type: string
+          format: date-time
+    Module:
+      type: object
+      required: [id, name, description, category, status, route]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+        category:
+          type: string
+          enum: [payroll, attendance, hr-documents]
+        status:
+          type: string
+          enum: [available, coming-soon]
+        route:
+          type: string
+    ProcessingJob:
+      type: object
+      required: [id, moduleId, fileName, status, progress, pages, outputCount, createdAt]
+      properties:
+        id:
+          type: integer
+        moduleId:
+          type: string
+        fileName:
+          type: string
+        status:
+          type: string
+          enum: [queued, processing, completed, failed]
+        progress:
+          type: integer
+        pages:
+          type: integer
+        outputCount:
+          type: integer
+        errorMessage:
+          type: string
+          description: Human-readable processing error, when status is failed.
+        createdAt:
+          type: string
+          format: date-time
+    ProcessingJobInput:
+      type: object
+      required: [moduleId, fileName, pages]
+      properties:
+        moduleId:
+          type: string
+        fileName:
+          type: string
+          pattern: ".*\\.[Pp][Dd][Ff]$"
+          description: Original uploaded file name; only PDF files are accepted.
+        pages:
+          type: integer
+          minimum: 1
+    AdminUser:
+      type: object
+      required: [id, email, role, status, createdAt]
+      properties:
+        id:
+          type: integer
+        email:
+          type: string
+          format: email
+        role:
+          type: string
+          enum: [admin, operator]
+        status:
+          type: string
+          enum: [active, invited, suspended]
+        createdAt:
+          type: string
+          format: date-time
+    InviteUserInput:
+      type: object
+      required: [email, role]
+      properties:
+        email:
+          type: string
+          format: email
+        role:
+          type: string
+          enum: [admin, operator]
+    UserStatusUpdate:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [active, suspended]
+    UserRoleUpdate:
+      type: object
+      required: [role]
+      properties:
+        role:
+          type: string
+          enum: [admin, operator]
