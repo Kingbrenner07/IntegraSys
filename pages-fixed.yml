@@ -1,0 +1,128 @@
+name: Deploy dashboard to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    env:
+      BASE_PATH: /IntegraSys/
+      PORT: "4173"
+      VITE_API_BASE_URL: ${{ vars.VITE_API_BASE_URL }}
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Load public authentication configuration
+        run: |
+          if [ -z "$VITE_API_BASE_URL" ]; then
+            echo "Repository variable VITE_API_BASE_URL is required." >&2
+            exit 1
+          fi
+
+          node <<'NODE'
+          const fs = require("node:fs/promises");
+
+          async function main() {
+            const apiBaseUrl = process.env.VITE_API_BASE_URL.replace(/\/+$/, "");
+            const response = await fetch(`${apiBaseUrl}/api/public-config`);
+            if (!response.ok) {
+              throw new Error(`Public API configuration returned HTTP ${response.status}.`);
+            }
+
+            const config = await response.json();
+            if (!config.supabaseUrl || !config.supabaseAnonKey) {
+              throw new Error("Public API configuration is incomplete.");
+            }
+
+            const contents = [
+              `VITE_SUPABASE_URL=${JSON.stringify(config.supabaseUrl)}`,
+              `VITE_SUPABASE_ANON_KEY=${JSON.stringify(config.supabaseAnonKey)}`,
+              "",
+            ].join("\n");
+            await fs.writeFile(
+              "artifacts/rh-dashboard/.env.production.local",
+              contents,
+              { mode: 0o600 },
+            );
+          }
+
+          main().catch((error) => {
+            console.error(error.message);
+            process.exit(1);
+          });
+          NODE
+
+      - name: Build dashboard
+        run: pnpm --filter @workspace/rh-dashboard run build
+
+      - name: Prepare single-page application fallback
+        run: |
+          cp artifacts/rh-dashboard/dist/public/index.html artifacts/rh-dashboard/dist/public/404.html
+          touch artifacts/rh-dashboard/dist/public/.nojekyll
+
+      - name: Validate public artifact
+        run: |
+          test -s artifacts/rh-dashboard/dist/public/index.html
+          test -s artifacts/rh-dashboard/dist/public/404.html
+          grep -q '/IntegraSys/assets/' artifacts/rh-dashboard/dist/public/index.html
+          if grep -R --exclude='*.map' -nE 'attached_assets|\.agents/outputs' artifacts/rh-dashboard/dist/public; then
+            echo "Sensitive workspace paths were found in the public artifact." >&2
+            exit 1
+          fi
+
+      - name: Publish compiled artifact to gh-pages
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          publish_dir="$(mktemp -d)"
+          cp -R artifacts/rh-dashboard/dist/public/. "$publish_dir/"
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch origin gh-pages
+          git checkout --orphan gh-pages
+          git rm -rf . >/dev/null 2>&1 || true
+          git clean -fdx
+          cp -R "$publish_dir"/. .
+          git add -A
+
+          unexpected_files="$(
+            git diff --cached --name-only |
+              grep -Ev '^(\.nojekyll|404\.html|index\.html|favicon\.svg|robots\.txt|assets/)' ||
+              true
+          )"
+          if [ -n "$unexpected_files" ]; then
+            echo "Unexpected files would be published:" >&2
+            echo "$unexpected_files" >&2
+            exit 1
+          fi
+
+          git commit -m "Deploy dashboard from ${GITHUB_SHA}"
+          git push origin gh-pages --force
