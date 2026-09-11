@@ -109,7 +109,20 @@ jobs:
           git fetch origin gh-pages
           git checkout --orphan gh-pages
           git rm -rf . >/dev/null 2>&1 || true
+          git clean -fdx
           cp -R "$publish_dir"/. .
           git add -A
+
+          unexpected_files="$(
+            git diff --cached --name-only |
+              grep -Ev '^(\.nojekyll|404\.html|index\.html|favicon\.svg|robots\.txt|assets/)' ||
+              true
+          )"
+          if [ -n "$unexpected_files" ]; then
+            echo "Unexpected files would be published:" >&2
+            echo "$unexpected_files" >&2
+            exit 1
+          fi
+
           git commit -m "Deploy dashboard from ${GITHUB_SHA}"
           git push origin gh-pages --force
