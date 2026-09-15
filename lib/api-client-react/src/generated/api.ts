@@ -671,6 +671,77 @@ export function useGetProcessingJob<TData = Awaited<ReturnType<typeof getProcess
 
 
 
+export const getCancelProcessingJobUrl = (jobId: number,) => {
+
+
+
+
+  return `/api/processing/jobs/${jobId}/cancel`
+}
+
+/**
+ * @summary Cancel a queued or active processing job
+ */
+export const cancelProcessingJob = async (jobId: number, options?: Parameters<typeof customFetch>[1]): Promise<ProcessingJob> => {
+
+  return customFetch<ProcessingJob>(getCancelProcessingJobUrl(jobId),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getCancelProcessingJobMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof cancelProcessingJob>>, TError,{jobId: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof cancelProcessingJob>>, TError,{jobId: number}, TContext> => {
+
+const mutationKey = ['cancelProcessingJob'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof cancelProcessingJob>>, {jobId: number}> = (props) => {
+          const {jobId} = props ?? {};
+
+          return  cancelProcessingJob(jobId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CancelProcessingJobMutationResult = NonNullable<Awaited<ReturnType<typeof cancelProcessingJob>>>
+
+    export type CancelProcessingJobMutationError = ErrorType<void>
+
+    /**
+ * @summary Cancel a queued or active processing job
+ */
+export const useCancelProcessingJob = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof cancelProcessingJob>>, TError,{jobId: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof cancelProcessingJob>>,
+        TError,
+        {jobId: number},
+        TContext
+      > => {
+      return useMutation(getCancelProcessingJobMutationOptions(options));
+    }
+
 export const getListAdminUsersUrl = () => {
 
 

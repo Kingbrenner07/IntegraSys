@@ -1,4 +1,9 @@
-import { useGetDashboardSummary, useGetDashboardActivity } from "@workspace/api-client-react"
+import {
+  getGetDashboardActivityQueryKey,
+  getGetDashboardSummaryQueryKey,
+  useGetDashboardActivity,
+  useGetDashboardSummary,
+} from "@workspace/api-client-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { FileText, Activity, CheckCircle, Files, ArrowUpRight } from "lucide-react"
 import { formatDate } from "@/lib/utils"
@@ -6,8 +11,18 @@ import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
 
 export default function Dashboard() {
-  const { data: summary, isLoading: loadingSummary } = useGetDashboardSummary()
-  const { data: activity, isLoading: loadingActivity } = useGetDashboardActivity()
+  const { data: summary, isLoading: loadingSummary } = useGetDashboardSummary({
+    query: {
+      queryKey: getGetDashboardSummaryQueryKey(),
+      refetchInterval: 2000,
+    },
+  })
+  const { data: activity, isLoading: loadingActivity } = useGetDashboardActivity({
+    query: {
+      queryKey: getGetDashboardActivityQueryKey(),
+      refetchInterval: 2000,
+    },
+  })
 
   const stats = [
     {
@@ -151,11 +166,12 @@ export default function Dashboard() {
                       <div className="pt-1">
                         <Badge variant={
                           item.status === 'completed' ? 'success' :
-                          item.status === 'failed' ? 'destructive' :
+                          item.status === 'failed' || item.status === 'cancelled' ? 'destructive' :
                           'warning'
                         }>
                           {item.status === 'completed' ? 'Concluído' :
                            item.status === 'failed' ? 'Falhou' :
+                           item.status === 'cancelled' ? 'Cancelado' :
                            item.status === 'queued' ? 'Na fila' :
                            'Processando'}
                         </Badge>

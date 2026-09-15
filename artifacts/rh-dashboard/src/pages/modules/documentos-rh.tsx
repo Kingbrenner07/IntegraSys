@@ -179,7 +179,7 @@ export default function HrDocumentsModule() {
                     <TableHead>Data</TableHead>
                     <TableHead>Tipo Detectado</TableHead>
                     <TableHead>Status</TableHead>
-                    <TableHead className="text-right">Baixar lote</TableHead>
+                    <TableHead className="text-right">Ações</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -202,17 +202,18 @@ export default function HrDocumentsModule() {
                       <TableCell>
                         <Badge variant={
                           job.status === 'completed' ? 'success' :
-                          job.status === 'failed' ? 'destructive' :
+                           job.status === 'failed' || job.status === 'cancelled' ? 'destructive' :
                           'warning'
                         }>
                           {job.status === 'completed' ? 'Concluído' :
-                           job.status === 'failed' ? 'Falhou' :
+                            job.status === 'failed' ? 'Falhou' :
+                            job.status === 'cancelled' ? 'Cancelado' :
                            job.status === 'queued' ? 'Na fila' :
                            'Processando'}
                         </Badge>
                       </TableCell>
                       <TableCell className="text-right">
-                        <ProcessingActions jobId={job.id} completed={job.status === "completed"} />
+                        <ProcessingActions jobId={job.id} status={job.status} />
                       </TableCell>
                     </TableRow>
                     {job.errorMessage && (

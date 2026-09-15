@@ -135,6 +135,24 @@ paths:
                 $ref: "#/components/schemas/ProcessingJob"
         "404":
           description: Job not found
+  /processing/jobs/{jobId}/cancel:
+    post:
+      operationId: cancelProcessingJob
+      tags: [processing]
+      summary: Cancel a queued or active processing job
+      parameters:
+        - $ref: "#/components/parameters/JobId"
+      responses:
+        "200":
+          description: Cancelled processing job
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProcessingJob"
+        "404":
+          description: Job not found
+        "409":
+          description: Job can no longer be cancelled
   /admin/users:
     get:
       operationId: listAdminUsers
@@ -275,7 +293,7 @@ components:
           type: string
         status:
           type: string
-          enum: [queued, completed, processing, failed]
+          enum: [queued, completed, processing, failed, cancelled]
         createdAt:
           type: string
           format: date-time
@@ -309,7 +327,7 @@ components:
           type: string
         status:
           type: string
-          enum: [queued, processing, completed, failed]
+          enum: [queued, processing, completed, failed, cancelled]
         progress:
           type: integer
         pages:
@@ -318,7 +336,7 @@ components:
           type: integer
         errorMessage:
           type: string
-          description: Human-readable processing error, when status is failed.
+          description: Human-readable processing error, when status is failed or cancelled.
         createdAt:
           type: string
           format: date-time

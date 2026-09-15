@@ -8,7 +8,7 @@ export type UploadedJob = {
   id: number;
   moduleId: string;
   fileName: string;
-  status: "queued" | "processing" | "completed" | "failed";
+  status: "queued" | "processing" | "completed" | "failed" | "cancelled";
   progress: number;
   pages: number;
   outputCount: number;

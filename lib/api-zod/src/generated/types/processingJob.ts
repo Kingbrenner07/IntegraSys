@@ -15,7 +15,7 @@ export interface ProcessingJob {
   progress: number;
   pages: number;
   outputCount: number;
-  /** Human-readable processing error, when status is failed. */
+  /** Human-readable processing error, when status is failed or cancelled. */
   errorMessage?: string;
   createdAt: Date;
 }

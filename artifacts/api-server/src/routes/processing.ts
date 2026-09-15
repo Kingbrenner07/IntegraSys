@@ -6,6 +6,8 @@ import { db, processingJobsTable } from "@workspace/db";
 import {
   CreateProcessingJobBody,
   CreateProcessingJobResponse,
+  CancelProcessingJobParams,
+  CancelProcessingJobResponse,
   GetProcessingJobParams,
   GetProcessingJobResponse,
   ListProcessingJobsResponse,
@@ -44,9 +46,11 @@ type PendingJob = {
   month?: string;
   year?: string;
   releaseCapacity: () => void;
+  controller: AbortController;
 };
 
 const runtimeJobs = new Map<number, RuntimeJob>();
+const jobControllers = new Map<number, AbortController>();
 const pendingJobs: PendingJob[] = [];
 const processStartedAt = new Date();
 let activeJobs = 0;
@@ -97,18 +101,28 @@ async function findOwnedJob(userId: string, jobId: number) {
   return job;
 }
 
-async function updateJob(
+type JobUpdate = Partial<{
+  status: string;
+  progress: number;
+  outputCount: number;
+}>;
+
+async function transitionJob(
   id: number,
-  values: Partial<{
-    status: string;
-    progress: number;
-    outputCount: number;
-  }>,
+  allowedStatuses: string[],
+  values: JobUpdate,
 ) {
-  await db
+  const [updated] = await db
     .update(processingJobsTable)
     .set(values)
-    .where(eq(processingJobsTable.id, id));
+    .where(
+      and(
+        eq(processingJobsTable.id, id),
+        inArray(processingJobsTable.status, allowedStatuses),
+      ),
+    )
+    .returning();
+  return updated;
 }
 
 async function runJob(params: {
@@ -118,26 +132,55 @@ async function runJob(params: {
   moduleId: ProcessingModule;
   month?: string;
   year?: string;
+  controller: AbortController;
 }) {
   runtimeJobs.set(params.id, { outputs: [] });
   try {
-    await updateJob(params.id, { status: "processing", progress: 1 });
+    const started = await transitionJob(params.id, ["queued"], {
+      status: "processing",
+      progress: 1,
+    });
+    if (!started) return;
     const result = await processPdf({
       ...params,
-      onProgress: (progress) =>
-        updateJob(params.id, { status: "processing", progress }),
+      signal: params.controller.signal,
+      onProgress: async (progress) => {
+        const updated = await transitionJob(params.id, ["processing"], {
+          status: "processing",
+          progress,
+        });
+        if (!updated) params.controller.abort();
+      },
     });
-    runtimeJobs.set(params.id, { outputs: result.outputs });
-    await updateJob(params.id, {
+    params.controller.signal.throwIfAborted();
+    const completed = await transitionJob(params.id, ["processing"], {
       status: "completed",
       progress: 100,
       outputCount: result.outputs.length,
     });
+    if (completed) {
+      runtimeJobs.set(params.id, { outputs: result.outputs });
+    }
   } catch (error) {
+    const cancelled = params.controller.signal.aborted;
     const message =
-      error instanceof Error ? error.message : "Falha inesperada ao processar o PDF.";
-    runtimeJobs.set(params.id, { outputs: [], errorMessage: message });
-    await updateJob(params.id, { status: "failed", progress: 100, outputCount: 0 });
+      cancelled
+        ? "Processamento cancelado pelo usuário."
+        : error instanceof Error
+          ? error.message
+          : "Falha inesperada ao processar o PDF.";
+    const updated = await transitionJob(
+      params.id,
+      cancelled ? ["queued", "processing"] : ["processing"],
+      {
+        status: cancelled ? "cancelled" : "failed",
+        outputCount: 0,
+        ...(cancelled ? {} : { progress: 100 }),
+      },
+    );
+    if (updated) {
+      runtimeJobs.set(params.id, { outputs: [], errorMessage: message });
+    }
   }
 }
 
@@ -152,6 +195,7 @@ function drainJobQueue() {
         logger.error({ err: error, jobId: nextJob.id }, "Processing job failed");
       })
       .finally(() => {
+        jobControllers.delete(nextJob.id);
         nextJob.releaseCapacity();
         activeJobs -= 1;
         drainJobQueue();
@@ -295,6 +339,8 @@ router.post(
           outputCount: 0,
         })
         .returning();
+      const controller = new AbortController();
+      jobControllers.set(job.id, controller);
       enqueueJob({
         id: job.id,
         data: file.buffer,
@@ -303,6 +349,7 @@ router.post(
         month,
         year,
         releaseCapacity,
+        controller,
       });
       res.status(201).json(
         CreateProcessingJobResponse.parse({
@@ -337,6 +384,67 @@ router.get("/processing/jobs/:jobId", async (req, res): Promise<void> => {
     }),
   );
 });
+
+router.post(
+  "/processing/jobs/:jobId/cancel",
+  async (req, res): Promise<void> => {
+    const params = CancelProcessingJobParams.safeParse(req.params);
+    if (!params.success) {
+      res.status(400).json({ error: params.error.message });
+      return;
+    }
+
+    const job = await findOwnedJob(req.auth!.id, params.data.jobId);
+    if (!job) {
+      res.status(404).json({ error: "Processamento não encontrado." });
+      return;
+    }
+    if (job.status !== "queued" && job.status !== "processing") {
+      res.status(409).json({
+        error: "Este processamento já foi finalizado e não pode ser cancelado.",
+      });
+      return;
+    }
+
+    const errorMessage = "Processamento cancelado pelo usuário.";
+    const cancelled = await transitionJob(
+      params.data.jobId,
+      ["queued", "processing"],
+      {
+        status: "cancelled",
+        outputCount: 0,
+      },
+    );
+    if (!cancelled) {
+      res.status(409).json({
+        error: "Este processamento já foi finalizado e não pode ser cancelado.",
+      });
+      return;
+    }
+
+    const pendingIndex = pendingJobs.findIndex(
+      (pending) => pending.id === params.data.jobId,
+    );
+    if (pendingIndex >= 0) {
+      const [pending] = pendingJobs.splice(pendingIndex, 1);
+      pending.controller.abort();
+      pending.releaseCapacity();
+      jobControllers.delete(pending.id);
+    } else {
+      jobControllers.get(params.data.jobId)?.abort();
+    }
+
+    runtimeJobs.set(params.data.jobId, { outputs: [], errorMessage });
+
+    res.json(
+      CancelProcessingJobResponse.parse({
+        ...cancelled,
+        errorMessage,
+        createdAt: cancelled.createdAt.toISOString(),
+      }),
+    );
+  },
+);
 
 router.get("/processing/jobs/:jobId/outputs", async (req, res): Promise<void> => {
   const jobId = Number(req.params.jobId);

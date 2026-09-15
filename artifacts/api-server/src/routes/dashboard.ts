@@ -1,10 +1,6 @@
 import { Router, type IRouter } from "express";
-import { desc, inArray, sql } from "drizzle-orm";
-import {
-  db,
-  dashboardMetricsTable,
-  processingJobsTable,
-} from "@workspace/db";
+import { desc, eq, sql } from "drizzle-orm";
+import { db, processingJobsTable } from "@workspace/db";
 import {
   GetDashboardActivityResponse,
   GetDashboardSummaryResponse,
@@ -12,29 +8,61 @@ import {
 
 const router: IRouter = Router();
 
-router.get("/dashboard/summary", async (_req, res): Promise<void> => {
-  const [metrics] = await db.select().from(dashboardMetricsTable).limit(1);
-  const [active] = await db
-    .select({ count: sql<number>`count(*)::int` })
+router.get("/dashboard/summary", async (req, res): Promise<void> => {
+  const [metrics] = await db
+    .select({
+      documentsProcessed: sql<number>`
+        count(*) filter (where ${processingJobsTable.status} = 'completed')::int
+      `,
+      activeJobs: sql<number>`
+        count(*) filter (
+          where ${processingJobsTable.status} in ('queued', 'processing')
+        )::int
+      `,
+      successfulJobs: sql<number>`
+        count(*) filter (where ${processingJobsTable.status} = 'completed')::int
+      `,
+      finishedJobs: sql<number>`
+        count(*) filter (
+          where ${processingJobsTable.status} in ('completed', 'failed')
+        )::int
+      `,
+      monthlyPages: sql<number>`
+        coalesce(
+          sum(${processingJobsTable.pages}) filter (
+            where ${processingJobsTable.status} = 'completed'
+              and ${processingJobsTable.createdAt} >= date_trunc('month', now())
+          ),
+          0
+        )::int
+      `,
+    })
     .from(processingJobsTable)
-    .where(
-      inArray(processingJobsTable.status, ["queued", "processing"]),
-    );
+    .where(eq(processingJobsTable.userId, req.auth!.id));
+
+  const finishedJobs = metrics?.finishedJobs ?? 0;
+  const successRate =
+    finishedJobs === 0
+      ? 100
+      : Number(
+          (((metrics?.successfulJobs ?? 0) / finishedJobs) * 100).toFixed(1),
+        );
 
   res.json(
     GetDashboardSummaryResponse.parse({
       documentsProcessed: metrics?.documentsProcessed ?? 0,
-      activeJobs: active?.count ?? 0,
-      successRate: metrics?.successRate ?? 100,
+      activeJobs: metrics?.activeJobs ?? 0,
+      successRate,
       monthlyPages: metrics?.monthlyPages ?? 0,
     }),
   );
 });
 
-router.get("/dashboard/activity", async (_req, res): Promise<void> => {
+router.get("/dashboard/activity", async (req, res): Promise<void> => {
   const jobs = await db
     .select()
     .from(processingJobsTable)
+    .where(eq(processingJobsTable.userId, req.auth!.id))
     .orderBy(desc(processingJobsTable.createdAt))
     .limit(6);
 
@@ -45,6 +73,8 @@ router.get("/dashboard/activity", async (_req, res): Promise<void> => {
     status:
       job.status === "failed"
         ? "failed"
+        : job.status === "cancelled"
+          ? "cancelled"
         : job.status === "completed"
           ? "completed"
           : job.status === "queued"

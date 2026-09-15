@@ -243,17 +243,27 @@ function assertPdfWasReadable(readablePages: number): void {
   );
 }
 
-async function createPdf(source: PDFDocument, pageIndexes: number[]): Promise<Buffer> {
+async function createPdf(
+  source: PDFDocument,
+  pageIndexes: number[],
+  signal?: AbortSignal,
+): Promise<Buffer> {
+  signal?.throwIfAborted();
   const output = await PDFDocument.create();
+  signal?.throwIfAborted();
   const pages = await output.copyPages(source, pageIndexes);
   for (const page of pages) output.addPage(page);
-  return Buffer.from(await output.save());
+  signal?.throwIfAborted();
+  const saved = await output.save();
+  signal?.throwIfAborted();
+  return Buffer.from(saved);
 }
 
 async function processPayroll(
   source: PDFDocument,
   extractor: PdfTextExtractor,
   reportProgress: (page: number) => Promise<void>,
+  signal?: AbortSignal,
 ): Promise<ProcessedOutput[]> {
   const groups = new Map<string, { pages: number[]; label: string }>();
   const used = new Set<string>();
@@ -283,7 +293,7 @@ async function processPayroll(
   for (const group of groups.values()) {
     outputs.push({
       name: uniqueName(safeName(group.label, "documento"), used),
-      data: await createPdf(source, group.pages),
+      data: await createPdf(source, group.pages, signal),
       description: group.label,
     });
   }
@@ -296,6 +306,7 @@ async function processAttendance(
   month: string,
   year: string,
   reportProgress: (page: number) => Promise<void>,
+  signal?: AbortSignal,
 ): Promise<ProcessedOutput[]> {
   const outputs: ProcessedOutput[] = [];
   const used = new Set<string>();
@@ -311,7 +322,7 @@ async function processAttendance(
     const label = `${month}.${year} - FOLHA DE PONTO - ${name}`;
     outputs.push({
       name: uniqueName(safeName(label, `folha_${page + 1}`), used),
-      data: await createPdf(source, [page]),
+      data: await createPdf(source, [page], signal),
       description: label,
     });
     await reportProgress(page + 1);
@@ -325,6 +336,7 @@ async function processHrDocuments(
   extractor: PdfTextExtractor,
   originalName: string,
   reportProgress: (page: number) => Promise<void>,
+  signal?: AbortSignal,
 ): Promise<ProcessedOutput[]> {
   const pagesByDocument = new Map<string, number[]>();
   let readablePages = 0;
@@ -348,7 +360,7 @@ async function processHrDocuments(
     const fileName = uniqueName(`${type}`, used);
     outputs.push({
       name: `${sourcePerson}/${fileName}`,
-      data: await createPdf(source, pages),
+      data: await createPdf(source, pages, signal),
       description: `${sourcePerson} / ${type}`,
     });
   }
@@ -362,19 +374,28 @@ export async function processPdf(params: {
   month?: string;
   year?: string;
   onProgress?: (progress: number) => Promise<void> | void;
+  signal?: AbortSignal;
 }): Promise<PdfProcessingResult> {
   let extractor: PdfTextExtractor | undefined;
   try {
+    params.signal?.throwIfAborted();
     const source = await PDFDocument.load(params.data);
-    extractor = await createPdfTextExtractor(params.data);
+    params.signal?.throwIfAborted();
+    extractor = await createPdfTextExtractor(params.data, params.signal);
     const pages = source.getPageCount();
     if (pages < 1) throw new Error("O PDF não contém páginas.");
     const reportProgress = async (page: number) => {
+      params.signal?.throwIfAborted();
       await params.onProgress?.(Math.round((page / pages) * 100));
     };
     let outputs: ProcessedOutput[];
     if (params.moduleId === "payroll") {
-      outputs = await processPayroll(source, extractor, reportProgress);
+      outputs = await processPayroll(
+        source,
+        extractor,
+        reportProgress,
+        params.signal,
+      );
     } else if (params.moduleId === "attendance") {
       outputs = await processAttendance(
         source,
@@ -382,6 +403,7 @@ export async function processPdf(params: {
         params.month ?? "01",
         params.year ?? String(new Date().getFullYear()),
         reportProgress,
+        params.signal,
       );
     } else {
       outputs = await processHrDocuments(
@@ -389,9 +411,11 @@ export async function processPdf(params: {
         extractor,
         params.fileName,
         reportProgress,
+        params.signal,
       );
     }
     if (outputs.length === 0) throw new Error("Nenhum documento foi identificado no PDF.");
+    params.signal?.throwIfAborted();
     return { pages, outputs };
   } finally {
     await extractor?.close();

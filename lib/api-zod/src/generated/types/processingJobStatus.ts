@@ -14,4 +14,5 @@ export const ProcessingJobStatus = {
   processing: 'processing',
   completed: 'completed',
   failed: 'failed',
+  cancelled: 'cancelled',
 } as const;

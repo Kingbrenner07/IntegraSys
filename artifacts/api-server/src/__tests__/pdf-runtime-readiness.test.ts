@@ -10,6 +10,7 @@ import { createHealthRouter } from "../routes/health";
 import {
   calculateRenderScale,
   createOcrWorkerWithTimeout,
+  waitForOcrWorkerWithAbort,
 } from "../lib/node-pdf-runtime";
 import type { Worker } from "tesseract.js";
 
@@ -109,5 +110,23 @@ describe("prazo de inicialização do OCR", () => {
 
     await new Promise((resolve) => setTimeout(resolve, 30));
     expect(terminated).toBe(true);
+  });
+
+  it("interrompe imediatamente a espera pela inicialização quando cancelado", async () => {
+    const controller = new AbortController();
+    let discarded = false;
+    const pendingWorker = new Promise<Worker>(() => undefined);
+    const waiting = waitForOcrWorkerWithAbort(
+      pendingWorker,
+      controller.signal,
+      () => {
+        discarded = true;
+      },
+    );
+
+    controller.abort();
+
+    await expect(waiting).rejects.toMatchObject({ name: "AbortError" });
+    expect(discarded).toBe(true);
   });
 });
