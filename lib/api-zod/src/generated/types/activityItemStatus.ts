@@ -14,4 +14,5 @@ export const ActivityItemStatus = {
   completed: 'completed',
   processing: 'processing',
   failed: 'failed',
+  cancelled: 'cancelled',
 } as const;

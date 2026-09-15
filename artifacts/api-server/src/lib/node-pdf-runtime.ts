@@ -14,6 +14,46 @@ export type PdfTextExtractor = {
   close(): Promise<void>;
 };
 
+function createAbortError(): Error {
+  return new DOMException("Processamento cancelado pelo usuário.", "AbortError");
+}
+
+async function withAbort<T>(
+  operation: Promise<T>,
+  signal: AbortSignal | undefined,
+  onAbort: () => Promise<void> | void,
+): Promise<T> {
+  if (!signal) return operation;
+  if (signal.aborted) {
+    await onAbort();
+    throw createAbortError();
+  }
+
+  let abortHandler: (() => void) | undefined;
+  const aborted = new Promise<never>((_resolve, reject) => {
+    abortHandler = () => {
+      Promise.resolve(onAbort())
+        .catch(() => undefined)
+        .finally(() => reject(createAbortError()));
+    };
+    signal.addEventListener("abort", abortHandler, { once: true });
+  });
+
+  try {
+    return await Promise.race([operation, aborted]);
+  } finally {
+    if (abortHandler) signal.removeEventListener("abort", abortHandler);
+  }
+}
+
+export function waitForOcrWorkerWithAbort(
+  operation: Promise<Worker>,
+  signal: AbortSignal | undefined,
+  onAbort: () => Promise<void> | void,
+): Promise<Worker> {
+  return withAbort(operation, signal, onAbort);
+}
+
 const OCR_DPI = 200;
 const TARGET_DPI_SCALE = OCR_DPI / 72;
 const MAX_RENDER_PIXELS = 6_000_000;
@@ -105,12 +145,17 @@ export function createPortugueseOcrWorkerWithTimeout(): Promise<Worker> {
 
 export async function createPdfTextExtractor(
   data: Buffer,
+  signal?: AbortSignal,
 ): Promise<PdfTextExtractor> {
   const loadingTask = pdfjs.getDocument({
     data: new Uint8Array(data),
     useSystemFonts: true,
   });
-  const document = await loadingTask.promise;
+  const document = await withAbort(
+    loadingTask.promise,
+    signal,
+    () => loadingTask.destroy(),
+  );
   let workerPromise: Promise<Worker> | undefined;
 
   const getOcrWorker = () => {
@@ -118,15 +163,22 @@ export async function createPdfTextExtractor(
     return workerPromise;
   };
 
-  const discardOcrWorker = async () => {
+  const discardOcrWorker = async (waitForWorker = true) => {
     const pendingWorker = workerPromise;
     workerPromise = undefined;
     if (!pendingWorker) return;
+    if (!waitForWorker) {
+      void pendingWorker
+        .then((worker) => worker.terminate())
+        .catch(() => undefined);
+      return;
+    }
     const worker = await pendingWorker.catch(() => undefined);
     await worker?.terminate().catch(() => undefined);
   };
 
   const extractPageOcr = async (pageIndex: number): Promise<string> => {
+    signal?.throwIfAborted();
     const page = await document.getPage(pageIndex + 1);
     try {
       const dimensions = page.getViewport({ scale: 1 });
@@ -145,18 +197,27 @@ export async function createPdfTextExtractor(
         background: "rgb(255,255,255)",
       });
       await withTimeout(
-        renderTask.promise,
+        withAbort(renderTask.promise, signal, () => renderTask.cancel()),
         PAGE_OPERATION_TIMEOUT_MS,
         () => renderTask.cancel(),
       );
-      const worker = await getOcrWorker();
+      const worker = await waitForOcrWorkerWithAbort(
+        getOcrWorker(),
+        signal,
+        () => discardOcrWorker(false),
+      );
       const result = await withTimeout(
-        worker.recognize(canvas.toBuffer("image/png")),
+        withAbort(
+          worker.recognize(canvas.toBuffer("image/png")),
+          signal,
+          discardOcrWorker,
+        ),
         PAGE_OPERATION_TIMEOUT_MS,
         discardOcrWorker,
       );
       return result.data.text;
     } catch (error) {
+      if (signal?.aborted) throw createAbortError();
       const message = error instanceof Error ? error.message : String(error);
       console.error(
         `[pdf-processing] OCR failed on page ${pageIndex + 1}: ${message}`,
@@ -169,9 +230,16 @@ export async function createPdfTextExtractor(
 
   return {
     async extractPage(pageIndex) {
+      signal?.throwIfAborted();
       const page = await document.getPage(pageIndex + 1);
       try {
-        const content = await page.getTextContent();
+        const content = await withAbort(
+          page.getTextContent(),
+          signal,
+          () => {
+            page.cleanup();
+          },
+        );
         const text = content.items
           .map((item) => {
             if (!("str" in item)) return "";
@@ -183,6 +251,7 @@ export async function createPdfTextExtractor(
           return { text, source: "text" };
         }
       } catch (error) {
+        if (signal?.aborted) throw createAbortError();
         const message = error instanceof Error ? error.message : String(error);
         console.error(
           `[pdf-processing] Text extraction failed on page ${pageIndex + 1}: ${message}`,

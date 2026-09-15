@@ -45,6 +45,7 @@ const testState = vi.hoisted(() => {
     state.jobs = [
       {
         id: 1,
+        userId: "supabase-admin-id",
         moduleId: "contracheques",
         fileName: "folha-mais-recente.pdf",
         status: "completed",
@@ -55,6 +56,7 @@ const testState = vi.hoisted(() => {
       },
       {
         id: 2,
+        userId: "supabase-admin-id",
         moduleId: "folha-de-ponto",
         fileName: "ponto-em-processamento.pdf",
         status: "processing",
@@ -124,10 +126,28 @@ const testState = vi.hoisted(() => {
 
       if (table === tables.processingJobsTable) {
         if (selection) {
-          const processingCount = state.jobs.filter(
-            (job) => job.status === "processing",
-          ).length;
-          return [{ count: processingCount }];
+          const ownedJobs = state.jobs.filter(
+            (job) => job.userId === "supabase-admin-id",
+          );
+          const completedJobs = ownedJobs.filter(
+            (job) => job.status === "completed",
+          );
+          const finishedJobs = ownedJobs.filter(
+            (job) => job.status === "completed" || job.status === "failed",
+          );
+          const activeJobs = ownedJobs.filter(
+            (job) => job.status === "queued" || job.status === "processing",
+          );
+          return [{
+            documentsProcessed: completedJobs.length,
+            activeJobs: activeJobs.length,
+            successfulJobs: completedJobs.length,
+            finishedJobs: finishedJobs.length,
+            monthlyPages: completedJobs.reduce(
+              (total, job) => total + Number(job.pages),
+              0,
+            ),
+          }];
         }
         if (ordered) return state.jobs;
         if (filtered && state.missingJob) return [];
@@ -197,6 +217,12 @@ const testState = vi.hoisted(() => {
         },
         where: () => query,
         returning: async () => {
+          if (table === tables.processingJobsTable) {
+            if (state.missingJob) return [];
+            const job = state.jobs[0];
+            Object.assign(job, values);
+            return [job];
+          }
           if (table !== tables.adminUsersTable || state.missingUser) return [];
           const user = state.users[0];
           Object.assign(user, values);
@@ -320,10 +346,10 @@ describe("API dashboard and processing routes", () => {
     const summaryResponse = await request("/dashboard/summary");
     expect(summaryResponse.status).toBe(200);
     await expect(summaryResponse.json()).resolves.toEqual({
-      documentsProcessed: 42,
+      documentsProcessed: 1,
       activeJobs: 1,
-      successRate: 98.5,
-      monthlyPages: 120,
+      successRate: 100,
+      monthlyPages: 4,
     });
 
     const activityResponse = await request("/dashboard/activity");
@@ -379,12 +405,43 @@ describe("API dashboard and processing routes", () => {
       }),
     );
     expect(testState.insertedJobs).toBe(1);
+    expect(testState.jobs[0]).toEqual(
+      expect.objectContaining({ userId: testAdminPrincipal.id }),
+    );
 
     const detailResponse = await request("/processing/jobs/3");
     expect(detailResponse.status).toBe(200);
     await expect(detailResponse.json()).resolves.toEqual(
       expect.objectContaining({ id: 3 }),
     );
+  });
+
+  it("cancels an active processing job owned by the current user", async () => {
+    testState.jobs[0].status = "processing";
+    const response = await request("/processing/jobs/1/cancel", {
+      method: "POST",
+    });
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual(
+      expect.objectContaining({
+        id: 1,
+        status: "cancelled",
+        outputCount: 0,
+        errorMessage: "Processamento cancelado pelo usuário.",
+      }),
+    );
+  });
+
+  it("does not cancel a job that has already completed", async () => {
+    const response = await request("/processing/jobs/1/cancel", {
+      method: "POST",
+    });
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toEqual({
+      error: "Este processamento já foi finalizado e não pode ser cancelado.",
+    });
   });
 
   it.each([

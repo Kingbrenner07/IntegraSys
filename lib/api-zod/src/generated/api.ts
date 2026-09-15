@@ -46,7 +46,7 @@ export const GetDashboardActivityResponseItem = zod.object({
   "id": zod.number().int(),
   "title": zod.string(),
   "detail": zod.string(),
-  "status": zod.enum(['queued', 'completed', 'processing', 'failed']),
+  "status": zod.enum(['queued', 'completed', 'processing', 'failed', 'cancelled']),
   "createdAt": zod.coerce.date()
 })
 export const GetDashboardActivityResponse = zod.array(GetDashboardActivityResponseItem)
@@ -73,11 +73,11 @@ export const ListProcessingJobsResponseItem = zod.object({
   "id": zod.number().int(),
   "moduleId": zod.string(),
   "fileName": zod.string(),
-  "status": zod.enum(['queued', 'processing', 'completed', 'failed']),
+  "status": zod.enum(['queued', 'processing', 'completed', 'failed', 'cancelled']),
   "progress": zod.number().int(),
   "pages": zod.number().int(),
   "outputCount": zod.number().int(),
-  "errorMessage": zod.string().optional().describe('Human-readable processing error, when status is failed.'),
+  "errorMessage": zod.string().optional().describe('Human-readable processing error, when status is failed or cancelled.'),
   "createdAt": zod.coerce.date()
 })
 export const ListProcessingJobsResponse = zod.array(ListProcessingJobsResponseItem)
@@ -100,11 +100,11 @@ export const CreateProcessingJobResponse = zod.object({
   "id": zod.number().int(),
   "moduleId": zod.string(),
   "fileName": zod.string(),
-  "status": zod.enum(['queued', 'processing', 'completed', 'failed']),
+  "status": zod.enum(['queued', 'processing', 'completed', 'failed', 'cancelled']),
   "progress": zod.number().int(),
   "pages": zod.number().int(),
   "outputCount": zod.number().int(),
-  "errorMessage": zod.string().optional().describe('Human-readable processing error, when status is failed.'),
+  "errorMessage": zod.string().optional().describe('Human-readable processing error, when status is failed or cancelled.'),
   "createdAt": zod.coerce.date()
 })
 
@@ -120,11 +120,31 @@ export const GetProcessingJobResponse = zod.object({
   "id": zod.number().int(),
   "moduleId": zod.string(),
   "fileName": zod.string(),
-  "status": zod.enum(['queued', 'processing', 'completed', 'failed']),
+  "status": zod.enum(['queued', 'processing', 'completed', 'failed', 'cancelled']),
   "progress": zod.number().int(),
   "pages": zod.number().int(),
   "outputCount": zod.number().int(),
-  "errorMessage": zod.string().optional().describe('Human-readable processing error, when status is failed.'),
+  "errorMessage": zod.string().optional().describe('Human-readable processing error, when status is failed or cancelled.'),
+  "createdAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Cancel a queued or active processing job
+ */
+export const CancelProcessingJobParams = zod.object({
+  "jobId": zod.coerce.number().int()
+})
+
+export const CancelProcessingJobResponse = zod.object({
+  "id": zod.number().int(),
+  "moduleId": zod.string(),
+  "fileName": zod.string(),
+  "status": zod.enum(['queued', 'processing', 'completed', 'failed', 'cancelled']),
+  "progress": zod.number().int(),
+  "pages": zod.number().int(),
+  "outputCount": zod.number().int(),
+  "errorMessage": zod.string().optional().describe('Human-readable processing error, when status is failed or cancelled.'),
   "createdAt": zod.coerce.date()
 })
 

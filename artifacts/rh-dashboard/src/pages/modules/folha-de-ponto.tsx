@@ -194,17 +194,18 @@ export default function TimesheetModule() {
                       <TableCell>
                         <Badge variant={
                           job.status === 'completed' ? 'success' :
-                          job.status === 'failed' ? 'destructive' :
+                          job.status === 'failed' || job.status === 'cancelled' ? 'destructive' :
                           'warning'
                         }>
                           {job.status === 'completed' ? 'Concluído' :
                            job.status === 'failed' ? 'Falhou' :
+                           job.status === 'cancelled' ? 'Cancelado' :
                            job.status === 'queued' ? 'Na fila' :
                            'Processando'}
                         </Badge>
                       </TableCell>
                       <TableCell className="text-right">
-                        <ProcessingActions jobId={job.id} completed={job.status === "completed"} />
+                        <ProcessingActions jobId={job.id} status={job.status} />
                       </TableCell>
                     </TableRow>
                     {job.errorMessage && (

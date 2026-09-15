@@ -46,6 +46,7 @@ export const ActivityItemStatus = {
   completed: 'completed',
   processing: 'processing',
   failed: 'failed',
+  cancelled: 'cancelled',
 } as const;
 
 export interface ActivityItem {
@@ -90,6 +91,7 @@ export const ProcessingJobStatus = {
   processing: 'processing',
   completed: 'completed',
   failed: 'failed',
+  cancelled: 'cancelled',
 } as const;
 
 export interface ProcessingJob {
@@ -100,7 +102,7 @@ export interface ProcessingJob {
   progress: number;
   pages: number;
   outputCount: number;
-  /** Human-readable processing error, when status is failed. */
+  /** Human-readable processing error, when status is failed or cancelled. */
   errorMessage?: string;
   createdAt: string;
 }
