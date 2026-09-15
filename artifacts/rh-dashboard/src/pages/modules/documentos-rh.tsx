@@ -23,6 +23,7 @@ export default function HrDocumentsModule() {
 
   const [files, setFiles] = useState<File[]>([])
   const [uploading, setUploading] = useState(false)
+  const [uploadedCount, setUploadedCount] = useState(0)
   const [uploadError, setUploadError] = useState<string | null>(null)
   
   const hrJobs = jobs?.filter(j => j.moduleId === 'hr-documents') || []
@@ -36,23 +37,62 @@ export default function HrDocumentsModule() {
 
     setUploadError(null)
     setUploading(true)
+    setUploadedCount(0)
     try {
-      await Promise.all(files.map((file) => uploadProcessingFile({
-        file,
-        moduleId: "hr-documents",
-      })))
-      toast({ title: "Processamento em lote iniciado", description: `${files.length} arquivos enviados para classificação.` })
-      setFiles([])
-    } catch (error) {
-      const message = getProcessingErrorMessage(error)
-      setUploadError(message)
-      toast({
-        title: "Erro ao enviar PDFs",
-        description: message,
-        variant: "destructive",
-      })
+      let nextFileIndex = 0
+      const failedFiles: Array<{ file: File; message: string }> = []
+
+      const uploadNextFile = async () => {
+        while (nextFileIndex < files.length) {
+          const file = files[nextFileIndex]
+          nextFileIndex += 1
+
+          try {
+            await uploadProcessingFile({
+              file,
+              moduleId: "hr-documents",
+            })
+          } catch (error) {
+            failedFiles.push({
+              file,
+              message: getProcessingErrorMessage(error),
+            })
+          } finally {
+            setUploadedCount((count) => count + 1)
+          }
+        }
+      }
+
+      await Promise.all(
+        Array.from(
+          { length: Math.min(2, files.length) },
+          () => uploadNextFile(),
+        ),
+      )
+
+      const successfulUploads = files.length - failedFiles.length
+      if (successfulUploads > 0) {
+        toast({
+          title: "Processamento em lote iniciado",
+          description: `${successfulUploads} arquivo(s) enviado(s) para classificação.`,
+        })
+      }
+
+      if (failedFiles.length > 0) {
+        const message = `${failedFiles.length} arquivo(s) não foram enviados. ${failedFiles[0].message}`
+        setFiles(failedFiles.map(({ file }) => file))
+        setUploadError(message)
+        toast({
+          title: "Alguns PDFs não foram enviados",
+          description: message,
+          variant: "destructive",
+        })
+      } else {
+        setFiles([])
+      }
     } finally {
       setUploading(false)
+      setUploadedCount(0)
     }
   }
 
@@ -111,7 +151,9 @@ export default function HrDocumentsModule() {
                   disabled={files.length === 0 || uploading}
                 >
                   {uploading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Upload className="h-4 w-4 mr-2" />}
-                  Classificar e Renomear
+                  {uploading
+                    ? `Enviando ${uploadedCount} de ${files.length}...`
+                    : "Classificar e Renomear"}
                 </Button>
               </form>
             </CardContent>
