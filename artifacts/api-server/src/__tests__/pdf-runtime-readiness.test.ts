@@ -83,7 +83,7 @@ describe("healthcheck do runtime de PDF e OCR", () => {
 describe("limite de memória da renderização", () => {
   it("reduz a escala de páginas extremas", () => {
     const scale = calculateRenderScale(20_000, 20_000);
-    expect(20_000 * scale * 20_000 * scale).toBeLessThanOrEqual(12_000_001);
+    expect(20_000 * scale * 20_000 * scale).toBeLessThanOrEqual(6_000_001);
   });
 });
 
