@@ -55,7 +55,7 @@ export function LayoutShell({
             </div>
             <div>
               <div className="text-[0.95rem]">IntegraSys <span className="text-primary">RH</span></div>
-              <div className="mt-0.5 text-[0.62rem] font-medium uppercase tracking-[0.16em] text-sidebar-foreground/50">Operations console</div>
+              <div className="mt-0.5 text-[0.62rem] font-medium uppercase tracking-[0.16em] text-sidebar-foreground/50">Painel de operações</div>
             </div>
           </div>
         </div>

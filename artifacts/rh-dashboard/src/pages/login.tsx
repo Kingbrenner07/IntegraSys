@@ -98,7 +98,7 @@ export default function Login() {
           </div>
           <h1 className="text-[1.7rem] font-bold tracking-[-0.04em]">IntegraSys <span className="text-primary">RH</span></h1>
           <p className="mt-2 text-sm text-muted-foreground">
-            Console de Operações de Processamento
+            Operações de Processamento
           </p>
         </div>
 
@@ -182,7 +182,7 @@ export default function Login() {
 
               <Button type="submit" className="w-full" disabled={pending || !isConfigured}>
                 {pending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                {isReset ? "Atualizar senha" : isForgot ? "Enviar link" : "Entrar no Console"}
+                {isReset ? "Atualizar senha" : isForgot ? "Enviar link" : "Entrar"}
               </Button>
 
               {!isReset && (

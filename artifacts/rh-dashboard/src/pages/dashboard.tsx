@@ -116,7 +116,7 @@ export default function Dashboard() {
         <Card className="lg:col-span-3 border-card-border/80">
           <CardHeader>
             <CardTitle>Atividade Recente</CardTitle>
-            <p className="text-xs text-muted-foreground">Últimas movimentações do console</p>
+            <p className="text-xs text-muted-foreground">Últimas movimentações do sistema</p>
           </CardHeader>
           <CardContent>
             {loadingActivity ? (
