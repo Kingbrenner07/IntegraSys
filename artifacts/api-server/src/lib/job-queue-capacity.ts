@@ -1,3 +1,7 @@
+export const MAX_CONCURRENT_PROCESSING_JOBS = 2;
+export const MAX_WAITING_PROCESSING_JOBS = 20;
+export const MAX_BUFFERED_PROCESSING_BYTES = 300 * 1024 * 1024;
+
 export class JobQueueCapacity {
   private bufferedBytes = 0;
   private bufferedJobs = 0;

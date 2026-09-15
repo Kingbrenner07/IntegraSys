@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { ZipArchive, type ArchiverError } from "archiver";
-import { and, desc, eq, inArray } from "drizzle-orm";
+import { and, desc, eq, inArray, lt } from "drizzle-orm";
 import multer from "multer";
 import { db, processingJobsTable } from "@workspace/db";
 import {
@@ -17,7 +17,13 @@ import {
   type ProcessedOutput,
   type ProcessingModule,
 } from "../lib/pdf-processing";
-import { JobQueueCapacity } from "../lib/job-queue-capacity";
+import {
+  JobQueueCapacity,
+  MAX_BUFFERED_PROCESSING_BYTES,
+  MAX_CONCURRENT_PROCESSING_JOBS,
+  MAX_WAITING_PROCESSING_JOBS,
+} from "../lib/job-queue-capacity";
+import { logger } from "../lib/logger";
 
 const router: IRouter = Router();
 const upload = multer({
@@ -42,8 +48,12 @@ type PendingJob = {
 
 const runtimeJobs = new Map<number, RuntimeJob>();
 const pendingJobs: PendingJob[] = [];
-let activeJob = false;
-const queueCapacity = new JobQueueCapacity(8, 100 * 1024 * 1024);
+const processStartedAt = new Date();
+let activeJobs = 0;
+const queueCapacity = new JobQueueCapacity(
+  MAX_CONCURRENT_PROCESSING_JOBS + MAX_WAITING_PROCESSING_JOBS,
+  MAX_BUFFERED_PROCESSING_BYTES,
+);
 const uploadCapacity = new JobQueueCapacity(2, 0);
 const validModules = new Set<ProcessingModule>([
   "payroll",
@@ -55,7 +65,12 @@ async function recoverInterruptedJobs() {
   await db
     .update(processingJobsTable)
     .set({ status: "failed", progress: 100, outputCount: 0 })
-    .where(inArray(processingJobsTable.status, ["queued", "processing"]));
+    .where(
+      and(
+        inArray(processingJobsTable.status, ["queued", "processing"]),
+        lt(processingJobsTable.createdAt, processStartedAt),
+      ),
+    );
 }
 
 void recoverInterruptedJobs().catch(() => undefined);
@@ -126,24 +141,27 @@ async function runJob(params: {
   }
 }
 
-async function drainJobQueue() {
-  if (activeJob) return;
-  const nextJob = pendingJobs.shift();
-  if (!nextJob) return;
+function drainJobQueue() {
+  while (activeJobs < MAX_CONCURRENT_PROCESSING_JOBS) {
+    const nextJob = pendingJobs.shift();
+    if (!nextJob) return;
 
-  activeJob = true;
-  try {
-    await runJob(nextJob);
-  } finally {
-    nextJob.releaseCapacity();
-    activeJob = false;
-    void drainJobQueue();
+    activeJobs += 1;
+    void runJob(nextJob)
+      .catch((error) => {
+        logger.error({ err: error, jobId: nextJob.id }, "Processing job failed");
+      })
+      .finally(() => {
+        nextJob.releaseCapacity();
+        activeJobs -= 1;
+        drainJobQueue();
+      });
   }
 }
 
 function enqueueJob(params: PendingJob) {
   pendingJobs.push(params);
-  void drainJobQueue();
+  drainJobQueue();
 }
 
 router.get("/processing/jobs", async (req, res): Promise<void> => {

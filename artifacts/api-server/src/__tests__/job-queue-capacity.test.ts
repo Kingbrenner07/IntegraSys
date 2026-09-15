@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { JobQueueCapacity } from "../lib/job-queue-capacity";
+import {
+  JobQueueCapacity,
+  MAX_BUFFERED_PROCESSING_BYTES,
+  MAX_CONCURRENT_PROCESSING_JOBS,
+  MAX_WAITING_PROCESSING_JOBS,
+} from "../lib/job-queue-capacity";
 
 describe("limites da fila de processamento", () => {
   it("recusa novos trabalhos ao atingir o limite de quantidade", () => {
@@ -24,5 +29,19 @@ describe("limites da fila de processamento", () => {
     release?.();
     release?.();
     expect(capacity.reserve(100)).toBeTypeOf("function");
+  });
+
+  it("aceita vinte trabalhos aguardando além dos dois em processamento", () => {
+    const totalJobs =
+      MAX_CONCURRENT_PROCESSING_JOBS + MAX_WAITING_PROCESSING_JOBS;
+    const capacity = new JobQueueCapacity(
+      totalJobs,
+      MAX_BUFFERED_PROCESSING_BYTES,
+    );
+
+    for (let index = 0; index < totalJobs; index += 1) {
+      expect(capacity.reserve(1024)).toBeTypeOf("function");
+    }
+    expect(capacity.reserve(1024)).toBeNull();
   });
 });
