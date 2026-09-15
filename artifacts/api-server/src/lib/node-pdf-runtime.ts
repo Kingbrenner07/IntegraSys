@@ -14,8 +14,9 @@ export type PdfTextExtractor = {
   close(): Promise<void>;
 };
 
-const TARGET_DPI_SCALE = 300 / 72;
-const MAX_RENDER_PIXELS = 12_000_000;
+const OCR_DPI = 200;
+const TARGET_DPI_SCALE = OCR_DPI / 72;
+const MAX_RENDER_PIXELS = 6_000_000;
 const PAGE_OPERATION_TIMEOUT_MS = 120_000;
 
 export function calculateRenderScale(
@@ -65,7 +66,7 @@ export async function createPortugueseOcrWorker(): Promise<Worker> {
     await worker.setParameters({
       tessedit_pageseg_mode: PSM.SPARSE_TEXT,
       preserve_interword_spaces: "1",
-      user_defined_dpi: "300",
+      user_defined_dpi: String(OCR_DPI),
     });
     return worker;
   } catch (error) {

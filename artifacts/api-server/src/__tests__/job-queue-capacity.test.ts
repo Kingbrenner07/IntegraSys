@@ -31,7 +31,7 @@ describe("limites da fila de processamento", () => {
     expect(capacity.reserve(100)).toBeTypeOf("function");
   });
 
-  it("aceita vinte trabalhos aguardando além dos dois em processamento", () => {
+  it("aceita vinte trabalhos aguardando além do trabalho em processamento", () => {
     const totalJobs =
       MAX_CONCURRENT_PROCESSING_JOBS + MAX_WAITING_PROCESSING_JOBS;
     const capacity = new JobQueueCapacity(
