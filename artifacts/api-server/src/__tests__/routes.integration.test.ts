@@ -223,7 +223,7 @@ vi.mock("@workspace/db", () => ({
 import { createApp } from "../app";
 
 const testAdminActions = {
-  invite: async () => undefined,
+  invite: async () => "invited" as const,
   setStatus: async () => undefined,
   setRole: async () => undefined,
 };
@@ -547,6 +547,50 @@ describe("API administration routes", () => {
         role: "operator",
       }),
     );
+  });
+
+  it("authorizes an existing Supabase identity without sending another invite", async () => {
+    const existingUserApp = createApp({
+      authenticate: async () => testAdminPrincipal,
+      adminActions: {
+        ...testAdminActions,
+        invite: async () => "existing" as const,
+      },
+    });
+    const existingUserServer = existingUserApp.listen(0);
+    await new Promise<void>((resolve) =>
+      existingUserServer.once("listening", resolve),
+    );
+    const address = existingUserServer.address() as AddressInfo;
+
+    try {
+      const response = await fetch(
+        `http://127.0.0.1:${address.port}/api/admin/users`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            email: "existente@empresa.com",
+            role: "operator",
+          }),
+        },
+      );
+
+      expect(response.status).toBe(201);
+      await expect(response.json()).resolves.toEqual(
+        expect.objectContaining({
+          email: "existente@empresa.com",
+          role: "operator",
+          status: "active",
+        }),
+      );
+    } finally {
+      await new Promise<void>((resolve, reject) =>
+        existingUserServer.close((error) =>
+          error ? reject(error) : resolve(),
+        ),
+      );
+    }
   });
 
   it.each([
