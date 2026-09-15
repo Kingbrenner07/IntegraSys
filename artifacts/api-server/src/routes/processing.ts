@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { ZipArchive, type ArchiverError } from "archiver";
-import { desc, eq, inArray } from "drizzle-orm";
+import { and, desc, eq, inArray } from "drizzle-orm";
 import multer from "multer";
 import { db, processingJobsTable } from "@workspace/db";
 import {
@@ -17,6 +17,7 @@ import {
   type ProcessedOutput,
   type ProcessingModule,
 } from "../lib/pdf-processing";
+import { JobQueueCapacity } from "../lib/job-queue-capacity";
 
 const router: IRouter = Router();
 const upload = multer({
@@ -36,11 +37,14 @@ type PendingJob = {
   moduleId: ProcessingModule;
   month?: string;
   year?: string;
+  releaseCapacity: () => void;
 };
 
 const runtimeJobs = new Map<number, RuntimeJob>();
 const pendingJobs: PendingJob[] = [];
 let activeJob = false;
+const queueCapacity = new JobQueueCapacity(8, 100 * 1024 * 1024);
+const uploadCapacity = new JobQueueCapacity(2, 0);
 const validModules = new Set<ProcessingModule>([
   "payroll",
   "attendance",
@@ -63,6 +67,19 @@ function serializeJob(job: Record<string, unknown>) {
     ...(runtime?.errorMessage ? { errorMessage: runtime.errorMessage } : {}),
     createdAt: (job.createdAt as Date).toISOString(),
   };
+}
+
+async function findOwnedJob(userId: string, jobId: number) {
+  const [job] = await db
+    .select()
+    .from(processingJobsTable)
+    .where(
+      and(
+        eq(processingJobsTable.id, jobId),
+        eq(processingJobsTable.userId, userId),
+      ),
+    );
+  return job;
 }
 
 async function updateJob(
@@ -118,6 +135,7 @@ async function drainJobQueue() {
   try {
     await runJob(nextJob);
   } finally {
+    nextJob.releaseCapacity();
     activeJob = false;
     void drainJobQueue();
   }
@@ -128,10 +146,11 @@ function enqueueJob(params: PendingJob) {
   void drainJobQueue();
 }
 
-router.get("/processing/jobs", async (_req, res): Promise<void> => {
+router.get("/processing/jobs", async (req, res): Promise<void> => {
   const jobs = await db
     .select()
     .from(processingJobsTable)
+    .where(eq(processingJobsTable.userId, req.auth!.id))
     .orderBy(desc(processingJobsTable.createdAt));
   res.json(
     ListProcessingJobsResponse.parse(
@@ -151,6 +170,7 @@ router.post("/processing/jobs", async (req, res): Promise<void> => {
     .insert(processingJobsTable)
     .values({
       ...parsed.data,
+      userId: req.auth!.id,
       status: "queued",
       progress: 0,
       outputCount: 0,
@@ -167,6 +187,19 @@ router.post("/processing/jobs", async (req, res): Promise<void> => {
 
 router.post(
   "/processing/jobs/upload",
+  (_req, res, next) => {
+    const releaseUploadSlot = uploadCapacity.reserve(0);
+    if (!releaseUploadSlot) {
+      res.status(503).json({
+        error:
+          "Há muitos uploads simultâneos. Aguarde alguns instantes e tente novamente.",
+      });
+      return;
+    }
+    res.once("finish", releaseUploadSlot);
+    res.once("close", releaseUploadSlot);
+    next();
+  },
   (req, res, next) => {
     upload.single("file")(req, res, (error) => {
       if (error) {
@@ -223,31 +256,46 @@ router.post(
       res.status(400).json({ error: "O PDF não contém páginas." });
       return;
     }
-    const [job] = await db
-      .insert(processingJobsTable)
-      .values({
-        moduleId: selectedModule,
+    const releaseCapacity = queueCapacity.reserve(file.buffer.length);
+    if (!releaseCapacity) {
+      res.status(503).json({
+        error:
+          "A fila de processamento está temporariamente cheia. Tente novamente após a conclusão dos documentos atuais.",
+      });
+      return;
+    }
+    try {
+      const [job] = await db
+        .insert(processingJobsTable)
+        .values({
+          userId: req.auth!.id,
+          moduleId: selectedModule,
+          fileName: file.originalname,
+          pages,
+          status: "queued",
+          progress: 0,
+          outputCount: 0,
+        })
+        .returning();
+      enqueueJob({
+        id: job.id,
+        data: file.buffer,
         fileName: file.originalname,
-        pages,
-        status: "queued",
-        progress: 0,
-        outputCount: 0,
-      })
-      .returning();
-    enqueueJob({
-      id: job.id,
-      data: file.buffer,
-      fileName: file.originalname,
-      moduleId: selectedModule,
-      month,
-      year,
-    });
-    res.status(201).json(
-      CreateProcessingJobResponse.parse({
-        ...job,
-        createdAt: job.createdAt.toISOString(),
-      }),
-    );
+        moduleId: selectedModule,
+        month,
+        year,
+        releaseCapacity,
+      });
+      res.status(201).json(
+        CreateProcessingJobResponse.parse({
+          ...job,
+          createdAt: job.createdAt.toISOString(),
+        }),
+      );
+    } catch (error) {
+      releaseCapacity();
+      throw error;
+    }
   },
 );
 
@@ -258,10 +306,7 @@ router.get("/processing/jobs/:jobId", async (req, res): Promise<void> => {
     return;
   }
 
-  const [job] = await db
-    .select()
-    .from(processingJobsTable)
-    .where(eq(processingJobsTable.id, params.data.jobId));
+  const job = await findOwnedJob(req.auth!.id, params.data.jobId);
 
   if (!job) {
     res.status(404).json({ error: "Processamento não encontrado." });
@@ -281,10 +326,7 @@ router.get("/processing/jobs/:jobId/outputs", async (req, res): Promise<void> =>
     res.status(400).json({ error: "Identificador de processamento inválido." });
     return;
   }
-  const [job] = await db
-    .select()
-    .from(processingJobsTable)
-    .where(eq(processingJobsTable.id, jobId));
+  const job = await findOwnedJob(req.auth!.id, jobId);
   if (!job) {
     res.status(404).json({ error: "Processamento não encontrado." });
     return;
@@ -309,8 +351,13 @@ router.get(
   async (req, res): Promise<void> => {
     const jobId = Number(req.params.jobId);
     const outputId = Number(req.params.outputId);
-    const output = runtimeJobs.get(jobId)?.outputs[outputId];
-    if (!Number.isInteger(jobId) || !Number.isInteger(outputId) || !output) {
+    if (!Number.isInteger(jobId) || !Number.isInteger(outputId)) {
+      res.status(404).json({ error: "Arquivo de saída não encontrado." });
+      return;
+    }
+    const job = await findOwnedJob(req.auth!.id, jobId);
+    const output = job ? runtimeJobs.get(jobId)?.outputs[outputId] : undefined;
+    if (!output) {
       res.status(404).json({ error: "Arquivo de saída não encontrado." });
       return;
     }
@@ -322,8 +369,13 @@ router.get(
 
 router.get("/processing/jobs/:jobId/download", async (req, res): Promise<void> => {
   const jobId = Number(req.params.jobId);
-  const outputs = runtimeJobs.get(jobId)?.outputs;
-  if (!Number.isInteger(jobId) || !outputs?.length) {
+  if (!Number.isInteger(jobId)) {
+    res.status(404).json({ error: "Arquivos de saída não encontrados." });
+    return;
+  }
+  const job = await findOwnedJob(req.auth!.id, jobId);
+  const outputs = job ? runtimeJobs.get(jobId)?.outputs : undefined;
+  if (!outputs?.length) {
     res.status(404).json({ error: "Arquivos de saída não encontrados." });
     return;
   }
