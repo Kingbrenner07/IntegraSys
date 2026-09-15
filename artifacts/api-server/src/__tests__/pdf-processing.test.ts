@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { classifyHrDocument, identifyName } from "../lib/pdf-processing";
+import { PDFDocument } from "pdf-lib";
+import {
+  classifyHrDocument,
+  identifyName,
+  processPdf,
+} from "../lib/pdf-processing";
 
 describe("identificação de nomes em documentos de RH", () => {
   it.each([
@@ -112,4 +117,19 @@ describe("classificação de documentos contratuais", () => {
       "43 - TERMO DE FORNECIMENTO DE TRANSPORTE",
     );
   });
+});
+
+describe("falhas de leitura do PDF", () => {
+  it("não conclui o processamento quando nenhuma página contém texto legível", async () => {
+    const pdf = await PDFDocument.create();
+    pdf.addPage([100, 100]);
+
+    await expect(
+      processPdf({
+        data: Buffer.from(await pdf.save()),
+        moduleId: "hr-documents",
+        fileName: "DOCUMENTOS - TESTE.pdf",
+      }),
+    ).rejects.toThrow("Não foi possível ler o conteúdo do PDF");
+  }, 30_000);
 });

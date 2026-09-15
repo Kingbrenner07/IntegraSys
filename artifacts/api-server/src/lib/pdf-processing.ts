@@ -260,11 +260,20 @@ async function extractPageOcr(pdfPath: string, page: number): Promise<string> {
       { maxBuffer: 2 * 1024 * 1024, timeout: 120_000 },
     );
     return result.stdout;
-  } catch {
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error(`[pdf-processing] OCR failed on page ${page + 1}: ${message}`);
     return "";
   } finally {
     await rm(`${imagePrefix}.png`, { force: true }).catch(() => undefined);
   }
+}
+
+function assertPdfWasReadable(readablePages: number): void {
+  if (readablePages > 0) return;
+  throw new Error(
+    "Não foi possível ler o conteúdo do PDF. O serviço de leitura/OCR está indisponível ou o arquivo não contém texto legível.",
+  );
 }
 
 async function extractPageText(
@@ -302,8 +311,10 @@ async function processPayroll(
 ): Promise<ProcessedOutput[]> {
   const groups = new Map<string, { pages: number[]; label: string }>();
   const used = new Set<string>();
+  let readablePages = 0;
   for (let page = 0; page < source.getPageCount(); page += 1) {
     const extracted = await extractPageText(pdfPath, page);
+    if (extracted.source !== "none") readablePages += 1;
     let text = extracted.text;
     let name = identifyName(text);
     if (!name && extracted.source === "text") {
@@ -321,6 +332,7 @@ async function processPayroll(
     groups.set(key, group);
     await reportProgress(page + 1);
   }
+  assertPdfWasReadable(readablePages);
   const outputs: ProcessedOutput[] = [];
   for (const group of groups.values()) {
     outputs.push({
@@ -341,8 +353,10 @@ async function processAttendance(
 ): Promise<ProcessedOutput[]> {
   const outputs: ProcessedOutput[] = [];
   const used = new Set<string>();
+  let readablePages = 0;
   for (let page = 0; page < source.getPageCount(); page += 1) {
     const extracted = await extractPageText(pdfPath, page);
+    if (extracted.source !== "none") readablePages += 1;
     let name = identifyName(extracted.text);
     if (!name && extracted.source === "text") {
       name = identifyName(await extractPageOcr(pdfPath, page));
@@ -356,6 +370,7 @@ async function processAttendance(
     });
     await reportProgress(page + 1);
   }
+  assertPdfWasReadable(readablePages);
   return outputs;
 }
 
@@ -366,10 +381,13 @@ async function processHrDocuments(
   reportProgress: (page: number) => Promise<void>,
 ): Promise<ProcessedOutput[]> {
   const pagesByDocument = new Map<string, number[]>();
+  let readablePages = 0;
   const sourcePerson =
     safeName(originalName.replace(/\.pdf$/i, "").split(" - ").at(-1) ?? "", "SEM_NOME");
   for (let page = 0; page < source.getPageCount(); page += 1) {
-    const { text } = await extractPageText(pdfPath, page);
+    const extracted = await extractPageText(pdfPath, page);
+    if (extracted.source !== "none") readablePages += 1;
+    const { text } = extracted;
     const type = classifyHrDocument(text);
     const key = type;
     const pages = pagesByDocument.get(key) ?? [];
@@ -377,6 +395,7 @@ async function processHrDocuments(
     pagesByDocument.set(key, pages);
     await reportProgress(page + 1);
   }
+  assertPdfWasReadable(readablePages);
   const used = new Set<string>();
   const outputs: ProcessedOutput[] = [];
   for (const [type, pages] of pagesByDocument) {
