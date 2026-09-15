@@ -92,20 +92,36 @@ async function findUserByEmail(email: string): Promise<SupabaseAuthUser> {
 }
 
 export type AdminAuthActions = {
-  invite: (email: string, role: AdminRole) => Promise<void>;
+  invite: (
+    email: string,
+    role: AdminRole,
+  ) => Promise<"invited" | "existing">;
   setStatus: (email: string, status: Exclude<AdminStatus, "invited">) => Promise<void>;
   setRole: (email: string, role: AdminRole) => Promise<void>;
 };
 
 export const supabaseAdminActions: AdminAuthActions = {
   async invite(email, role) {
-    await adminRequest("/invite", {
-      method: "POST",
-      body: JSON.stringify({
-        email,
-        data: { role },
-      }),
-    });
+    try {
+      await adminRequest("/invite", {
+        method: "POST",
+        body: JSON.stringify({
+          email,
+          data: { role },
+        }),
+      });
+      return "invited";
+    } catch (error) {
+      if (!(error instanceof SupabaseAdminError) || error.statusCode !== 409) {
+        throw error;
+      }
+
+      // Supabase refuses a second invitation for an existing Auth identity.
+      // Confirm that exact identity before allowing the application to grant
+      // dashboard access through its own admin_users allowlist.
+      await findUserByEmail(email);
+      return "existing";
+    }
   },
 
   async setStatus(email, status) {

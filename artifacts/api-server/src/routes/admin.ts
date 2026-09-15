@@ -47,8 +47,9 @@ export function createAdminRouter(
   }
 
     const email = parsed.data.email.trim().toLowerCase();
+    let invitationResult: "invited" | "existing";
     try {
-      await adminActions.invite(email, parsed.data.role);
+      invitationResult = await adminActions.invite(email, parsed.data.role);
     } catch (error) {
       if (error instanceof SupabaseAdminError) {
         res.status(error.statusCode).json({ error: error.message });
@@ -62,11 +63,14 @@ export function createAdminRouter(
       .values({
         email,
         role: parsed.data.role,
-        status: "invited",
+        status: invitationResult === "existing" ? "active" : "invited",
       })
       .onConflictDoUpdate({
         target: adminUsersTable.email,
-        set: { role: parsed.data.role, status: "invited" },
+        set: {
+          role: parsed.data.role,
+          status: invitationResult === "existing" ? "active" : "invited",
+        },
       })
       .returning();
 

@@ -35,13 +35,25 @@ export default function AdminUsers() {
         role
       }
     }, {
-      onSuccess: () => {
-        toast({ title: "Convite enviado", description: `Um e-mail de acesso foi enviado para ${email}.` })
+      onSuccess: (user) => {
+        const existingUserWasAuthorized = user.status === "active"
+        toast({
+          title: existingUserWasAuthorized ? "Acesso autorizado" : "Convite enviado",
+          description: existingUserWasAuthorized
+            ? `${user.email} já existia no Supabase e agora pode acessar o painel.`
+            : `Um e-mail de acesso foi enviado para ${user.email}.`,
+        })
         setEmail("")
         queryClient.invalidateQueries({ queryKey: getListAdminUsersQueryKey() })
       },
-      onError: () => {
-        toast({ title: "Erro", description: "Não foi possível enviar o convite.", variant: "destructive" })
+      onError: (error) => {
+        toast({
+          title: "Erro",
+          description: error instanceof Error
+            ? error.message
+            : "Não foi possível enviar o convite.",
+          variant: "destructive",
+        })
       }
     })
   }
