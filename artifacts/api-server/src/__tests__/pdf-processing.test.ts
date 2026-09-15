@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { PDFDocument } from "pdf-lib";
+import { createCanvas } from "@napi-rs/canvas";
 import {
   classifyHrDocument,
   identifyName,
@@ -131,5 +132,38 @@ describe("falhas de leitura do PDF", () => {
         fileName: "DOCUMENTOS - TESTE.pdf",
       }),
     ).rejects.toThrow("Não foi possível ler o conteúdo do PDF");
+  }, 30_000);
+});
+
+describe("processamento de PDF digitalizado", () => {
+  it("renderiza a página, reconhece português e classifica o documento", async () => {
+    const canvas = createCanvas(1800, 320);
+    const context = canvas.getContext("2d");
+    context.fillStyle = "white";
+    context.fillRect(0, 0, canvas.width, canvas.height);
+    context.fillStyle = "black";
+    context.font = "48px sans-serif";
+    context.fillText(
+      "TERMO DE RESCISAO DE CONTRATO DE TRABALHO",
+      40,
+      170,
+    );
+
+    const pdf = await PDFDocument.create();
+    const image = await pdf.embedPng(canvas.toBuffer("image/png"));
+    const page = pdf.addPage([900, 160]);
+    page.drawImage(image, { x: 0, y: 0, width: 900, height: 160 });
+
+    const result = await processPdf({
+      data: Buffer.from(await pdf.save()),
+      moduleId: "hr-documents",
+      fileName: "DOCUMENTOS - TESTE OCR.pdf",
+    });
+
+    expect(result.pages).toBe(1);
+    expect(result.outputs).toHaveLength(1);
+    expect(result.outputs[0]?.name).toContain(
+      "03 - TERMO DE RESCISÃO CONTRATUAL",
+    );
   }, 30_000);
 });

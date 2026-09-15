@@ -1,11 +1,8 @@
-import { execFile } from "node:child_process";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { promisify } from "node:util";
 import { PDFDocument } from "pdf-lib";
-
-const execFileAsync = promisify(execFile);
+import {
+  createPdfTextExtractor,
+  type PdfTextExtractor,
+} from "./node-pdf-runtime";
 
 export type ProcessingModule = "payroll" | "attendance" | "hr-documents";
 
@@ -239,62 +236,11 @@ export function classifyHrDocument(text: string): string {
   return "00 - DOCUMENTO NÃO IDENTIFICADO";
 }
 
-async function extractPageOcr(pdfPath: string, page: number): Promise<string> {
-  const imagePrefix = `${pdfPath}.ocr-${page}`;
-  try {
-    await execFileAsync("pdftoppm", [
-      "-f",
-      String(page + 1),
-      "-l",
-      String(page + 1),
-      "-png",
-      "-r",
-      "300",
-      "-singlefile",
-      pdfPath,
-      imagePrefix,
-    ]);
-    const result = await execFileAsync(
-      "tesseract",
-      [`${imagePrefix}.png`, "stdout", "-l", "por", "--psm", "11"],
-      { maxBuffer: 2 * 1024 * 1024, timeout: 120_000 },
-    );
-    return result.stdout;
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    console.error(`[pdf-processing] OCR failed on page ${page + 1}: ${message}`);
-    return "";
-  } finally {
-    await rm(`${imagePrefix}.png`, { force: true }).catch(() => undefined);
-  }
-}
-
 function assertPdfWasReadable(readablePages: number): void {
   if (readablePages > 0) return;
   throw new Error(
     "Não foi possível ler o conteúdo do PDF. O serviço de leitura/OCR está indisponível ou o arquivo não contém texto legível.",
   );
-}
-
-async function extractPageText(
-  pdfPath: string,
-  page: number,
-): Promise<{ text: string; source: "text" | "ocr" | "none" }> {
-  try {
-    const result = await execFileAsync(
-      "pdftotext",
-      ["-f", String(page + 1), "-l", String(page + 1), "-layout", pdfPath, "-"],
-      { maxBuffer: 2 * 1024 * 1024 },
-    );
-    if (result.stdout.trim().length >= 10) {
-      return { text: result.stdout, source: "text" };
-    }
-  } catch {
-    // Scanned PDFs do not contain a text layer; use OCR below.
-  }
-
-  const text = await extractPageOcr(pdfPath, page);
-  return { text, source: text.trim() ? "ocr" : "none" };
 }
 
 async function createPdf(source: PDFDocument, pageIndexes: number[]): Promise<Buffer> {
@@ -306,19 +252,19 @@ async function createPdf(source: PDFDocument, pageIndexes: number[]): Promise<Bu
 
 async function processPayroll(
   source: PDFDocument,
-  pdfPath: string,
+  extractor: PdfTextExtractor,
   reportProgress: (page: number) => Promise<void>,
 ): Promise<ProcessedOutput[]> {
   const groups = new Map<string, { pages: number[]; label: string }>();
   const used = new Set<string>();
   let readablePages = 0;
   for (let page = 0; page < source.getPageCount(); page += 1) {
-    const extracted = await extractPageText(pdfPath, page);
+    const extracted = await extractor.extractPage(page);
     if (extracted.source !== "none") readablePages += 1;
     let text = extracted.text;
     let name = identifyName(text);
     if (!name && extracted.source === "text") {
-      text = await extractPageOcr(pdfPath, page);
+      text = await extractor.extractPageOcr(page);
       name = identifyName(text);
     }
     const registration = identifyRegistration(text, "");
@@ -346,7 +292,7 @@ async function processPayroll(
 
 async function processAttendance(
   source: PDFDocument,
-  pdfPath: string,
+  extractor: PdfTextExtractor,
   month: string,
   year: string,
   reportProgress: (page: number) => Promise<void>,
@@ -355,11 +301,11 @@ async function processAttendance(
   const used = new Set<string>();
   let readablePages = 0;
   for (let page = 0; page < source.getPageCount(); page += 1) {
-    const extracted = await extractPageText(pdfPath, page);
+    const extracted = await extractor.extractPage(page);
     if (extracted.source !== "none") readablePages += 1;
     let name = identifyName(extracted.text);
     if (!name && extracted.source === "text") {
-      name = identifyName(await extractPageOcr(pdfPath, page));
+      name = identifyName(await extractor.extractPageOcr(page));
     }
     name ??= `documento_${page + 1}`;
     const label = `${month}.${year} - FOLHA DE PONTO - ${name}`;
@@ -376,7 +322,7 @@ async function processAttendance(
 
 async function processHrDocuments(
   source: PDFDocument,
-  pdfPath: string,
+  extractor: PdfTextExtractor,
   originalName: string,
   reportProgress: (page: number) => Promise<void>,
 ): Promise<ProcessedOutput[]> {
@@ -385,7 +331,7 @@ async function processHrDocuments(
   const sourcePerson =
     safeName(originalName.replace(/\.pdf$/i, "").split(" - ").at(-1) ?? "", "SEM_NOME");
   for (let page = 0; page < source.getPageCount(); page += 1) {
-    const extracted = await extractPageText(pdfPath, page);
+    const extracted = await extractor.extractPage(page);
     if (extracted.source !== "none") readablePages += 1;
     const { text } = extracted;
     const type = classifyHrDocument(text);
@@ -417,11 +363,10 @@ export async function processPdf(params: {
   year?: string;
   onProgress?: (progress: number) => Promise<void> | void;
 }): Promise<PdfProcessingResult> {
-  const workDir = await mkdtemp(join(tmpdir(), "rh-pdf-"));
-  const pdfPath = join(workDir, "input.pdf");
-  await writeFile(pdfPath, params.data);
+  let extractor: PdfTextExtractor | undefined;
   try {
     const source = await PDFDocument.load(params.data);
+    extractor = await createPdfTextExtractor(params.data);
     const pages = source.getPageCount();
     if (pages < 1) throw new Error("O PDF não contém páginas.");
     const reportProgress = async (page: number) => {
@@ -429,22 +374,27 @@ export async function processPdf(params: {
     };
     let outputs: ProcessedOutput[];
     if (params.moduleId === "payroll") {
-      outputs = await processPayroll(source, pdfPath, reportProgress);
+      outputs = await processPayroll(source, extractor, reportProgress);
     } else if (params.moduleId === "attendance") {
       outputs = await processAttendance(
         source,
-        pdfPath,
+        extractor,
         params.month ?? "01",
         params.year ?? String(new Date().getFullYear()),
         reportProgress,
       );
     } else {
-      outputs = await processHrDocuments(source, pdfPath, params.fileName, reportProgress);
+      outputs = await processHrDocuments(
+        source,
+        extractor,
+        params.fileName,
+        reportProgress,
+      );
     }
     if (outputs.length === 0) throw new Error("Nenhum documento foi identificado no PDF.");
     return { pages, outputs };
   } finally {
-    await rm(workDir, { recursive: true, force: true });
+    await extractor?.close();
   }
 }
 
